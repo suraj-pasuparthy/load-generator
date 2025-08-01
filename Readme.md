@@ -29,7 +29,7 @@ This will create a JAR file in the `target/` directory (e.g., `spanner-load-gene
 
 ## Command-Line Arguments
 
-The tool is highly configurable via the following command-line options:
+The tool is configurable via the following command-line options:
 
 | Option                 | Alias | Description                                                                                    | Default           |
 | :--------------------- | :---- | :--------------------------------------------------------------------------------------------- | :---------------- |
