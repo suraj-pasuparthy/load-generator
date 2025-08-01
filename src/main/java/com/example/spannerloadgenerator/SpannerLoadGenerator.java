@@ -151,6 +151,17 @@ public class SpannerLoadGenerator implements Callable<Integer> {
       description = "Total run duration in minutes. 0 means run indefinitely. Default: 0.")
   private long runDurationMinutes;
 
+  @Option(
+        names = {"--decay-start-min"},
+        description = "Time in minutes after which load starts to decay.")
+    private int decayStartMin = 0;
+
+  @Option(
+        names = {"--decay-percent"},
+        description = "Percentage to decrease QPS at each interval after decay starts. Must be between 1 and 100.")
+    private int decayPercent = 0;
+  }
+
   // --- Internal State ---
   private Spanner spanner;
   private DatabaseClient dbClient;
@@ -506,6 +517,8 @@ public class SpannerLoadGenerator implements Callable<Integer> {
 
   private void performQpsStep() {
     if (!running.get()) return;
+    final long startTime = System.currentTimeMillis();
+
     double currentRate = currentTargetQps.get();
     if (currentRate <= 0 && startQPS <= 0 && stepQPS > 0) currentRate = 0;
     if (endQPS > 0 && currentRate >= endQPS) {
@@ -525,7 +538,22 @@ public class SpannerLoadGenerator implements Callable<Integer> {
     double newEffectiveRate = nextRateCandidate;
     if (endQPS > 0) newEffectiveRate = Math.min(nextRateCandidate, endQPS);
     if (newEffectiveRate < 0) newEffectiveRate = 0;
-    if (newEffectiveRate > currentRate
+    long decayStartMillis = 0;
+
+    if (arguments.decayStartMin > 0) {
+      long decayStartMillis = startTime + TimeUnit.MINUTES.toMillis(arguments.decayStartMin);
+    }
+    if (System.currentTimeMillis() >= decayStartMillis) {
+      nextRateCandidate = currentRate - (currentRate * decayPercent)/100;
+      if (nextRateCandidate < 0) {
+        nextRateCandidate = currentRate;
+      }
+      newEffectiveRate = nextRateCandidate;
+      currentTargetQps.set(newEffectiveRate);
+      rateLimiter.setRate(newEffectiveRate);
+      logger.info(
+        String.format("Main Run: QPS stepped DOWN %.2f to %.2f.", currentRate, newEffectiveRate));
+    } else if (newEffectiveRate > currentRate
         || (currentRate == 0 && newEffectiveRate > 0 && stepQPS > 0)) {
       currentTargetQps.set(newEffectiveRate);
       rateLimiter.setRate(newEffectiveRate);
